@@ -1,0 +1,50 @@
+name: Gerar programa Windows
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows/**"
+      - "src/andamento.js"
+      - ".github/workflows/gerar-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Testar cálculos do relatório
+        run: npm test
+
+      - name: Gerar instalador
+        run: npm run dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RelatorioDeObra-Setup
+          path: windows/release/RelatorioDeObra-Setup.exe
+
+      - name: Publicar em Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-v1.0.${{ github.run_number }}
+          name: Relatório de Obra (Windows) v1.0.${{ github.run_number }}
+          body: Baixe RelatorioDeObra-Setup.exe abaixo e execute para instalar. Se o Windows avisar "editor desconhecido", clique em "Mais informações" e depois em "Executar assim mesmo".
+          files: windows/release/RelatorioDeObra-Setup.exe

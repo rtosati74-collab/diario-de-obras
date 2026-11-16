@@ -1,0 +1,11 @@
+{
+  "appId": "br.com.diariodeobra.app",
+  "appName": "Diário de Obra",
+  "webDir": "www",
+  "android": {
+    "adjustMarginsForEdgeToEdge": "auto"
+  },
+  "plugins": {
+    "Camera": {}
+  }
+}
