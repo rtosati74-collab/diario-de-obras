@@ -8,7 +8,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // No GitHub cada compilação recebe um número novo, para o Android aceitar a atualização
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1") as Integer
+        versionCode = 100 + ((System.getenv("GITHUB_RUN_NUMBER") ?: "1") as Integer)
         versionName = "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
