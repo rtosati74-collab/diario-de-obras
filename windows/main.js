@@ -29,5 +29,15 @@ ipcMain.handle("salvar-pdf", async (ev, { nome, bytes }) => {
   return { ok: true, caminho: r.filePath };
 });
 
+ipcMain.handle("salvar-arquivo", async (ev, { nome, bytes, tipo }) => {
+  const win = BrowserWindow.fromWebContents(ev.sender);
+  const filtros = { xlsx: [{ name: "Planilha do Excel", extensions: ["xlsx"] }], pdf: [{ name: "PDF", extensions: ["pdf"] }] };
+  const r = await dialog.showSaveDialog(win, { title: "Salvar arquivo", defaultPath: path.join(app.getPath("documents"), nome), filters: filtros[tipo] || [] });
+  if (r.canceled || !r.filePath) return { ok: false, cancelado: true };
+  fs.writeFileSync(r.filePath, Buffer.from(bytes));
+  shell.openPath(r.filePath);
+  return { ok: true, caminho: r.filePath };
+});
+
 app.whenReady().then(criarJanela);
 app.on("window-all-closed", () => app.quit());

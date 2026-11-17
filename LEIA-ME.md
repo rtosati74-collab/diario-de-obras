@@ -107,4 +107,6 @@ A partir daí, cada diário **concluído** vira um PDF em `Diário de Obra / <no
 3. Na primeira vez, cole o mesmo bloco **firebaseConfig** do celular e entre com seu e-mail e senha.
 4. Escolha a obra, o período (mês atual, mês anterior, obra toda ou datas) e clique em **Gerar relatório em PDF**.
 
+**Cronograma pelo Excel:** no quadro **Cronograma da obra**, clique em **Baixar modelo (Excel)** (ou **Baixar cronograma atual**), preencha as colunas *Etapa | Peso (%) | Início previsto | Fim previsto* e clique em **Importar planilha**. O programa mostra uma prévia (etapas novas, alteradas e que saem, e a soma dos pesos) antes de gravar. Etapas com o mesmo nome mantêm o % já lançado nos diários. Aceita .xlsx, .xls e .csv; datas em dd/mm/aaaa.
+
 O relatório traz: capa com resumo (% realizado x previsto e desvio), curva de avanço, andamento por etapa, efetivo diário, tempo, segurança, serviços de cada dia, fotos com legenda e assinatura do responsável técnico.

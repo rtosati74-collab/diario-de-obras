@@ -20,7 +20,8 @@
     "electron-builder": "26.17.0",
     "esbuild": "0.25.12",
     "firebase": "11.10.0",
-    "jspdf": "3.0.4"
+    "jspdf": "3.0.4",
+    "xlsx": "0.18.5"
   },
   "build": {
     "appId": "br.com.freiretosati.relatoriodeobra",

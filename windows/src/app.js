@@ -1,7 +1,9 @@
 import "./style.css";
 import { initializeApp } from "firebase/app";
 import { initializeAuth, browserLocalPersistence, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-import { initializeFirestore, collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { initializeFirestore, collection, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
+import { lerPlanilha, gerarModelo } from "./planilha.js";
+import { mesclarEtapas } from "./cronograma.js";
 import { montarDados } from "./dados.js";
 import { gerarRelatorio, fraseResumo, fmtData } from "./relatorio.js";
 import { curvaChart, etapasChart, efetivoChart, climaChart, pct, dm } from "./charts.js";
@@ -137,7 +139,8 @@ function painel() {
   const dados = montarDados(obra, S.diarios.filter(d => d.obraId === obra.id), { inicio: S.ini, fim: S.fim, incluirRascunhos: S.rascunhos });
   const r = dados.resumo;
   const nFotos = dados.dias.reduce((s, d) => s + Math.min((d.fotos || []).length, S.fotos === "4" ? 4 : 999), 0);
-  let h = '<section class="box"><div class="box-h">Período do relatório<span class="r">' + esc(obra.nome) + '</span></div><div class="box-b">' +
+  let h = cronogramaHtml(obra);
+  h += '<section class="box"><div class="box-h">Período do relatório<span class="r">' + esc(obra.nome) + '</span></div><div class="box-b">' +
     '<div class="row"><div class="seg" role="group" aria-label="Período">' +
     [["mes", "Mês atual"], ["anterior", "Mês anterior"], ["toda", "Obra toda"], ["outro", "Escolher datas"]].map(([k, t]) => '<button data-p="' + k + '" aria-pressed="' + (S.periodo === k) + '">' + t + '</button>').join("") + '</div>' +
     '<label class="f">De<input type="date" class="inp" id="ini" value="' + S.ini + '"></label><label class="f">Até<input type="date" class="inp" id="fim" value="' + S.fim + '"></label></div>' +
@@ -163,7 +166,7 @@ function painel() {
       '<table class="t"><thead><tr><th>Etapa</th><th style="text-align:right">Peso</th><th style="text-align:right">Previsto</th><th style="text-align:right">Realizado</th></tr></thead><tbody>' +
       dados.etapas.map(e => '<tr><td>' + esc(e.nome) + '</td><td class="n">' + pct(e.peso) + '</td><td class="n">' + pct(e.previsto) + '</td><td class="n">' + pct(e.realizado) + '</td></tr>').join("") + '</tbody></table></div></section>';
   } else {
-    h += '<div class="notice full">Esta obra não tem etapas cadastradas. Cadastre as etapas no app do celular (Editar dados da obra) para ver a curva de avanço.</div>';
+    h += '<div class="notice full">Esta obra não tem etapas cadastradas. Use <b>Importar planilha</b>, no quadro Cronograma acima, para ver a curva de avanço.</div>';
   }
   h += '<section class="box"><div class="box-h">Efetivo diário</div><div class="box-b">' + (dados.efetivo.datas.length ? '<div class="chart-wrap"><canvas id="c3" role="img" aria-label="Efetivo diário por empreiteira"></canvas></div>' : '<div class="notice">Sem diários no período.</div>') + '</div></section>';
   h += '<section class="box"><div class="box-h">Turnos por condição do tempo</div><div class="box-b"><div class="chart-wrap"><canvas id="c4" role="img" aria-label="Turnos por condição do tempo"></canvas></div></div></section>';
@@ -180,6 +183,71 @@ function painel() {
   $("#fim").onchange = e => { S.fim = e.target.value; S.periodo = "outro"; if (S.fim < S.ini) S.ini = S.fim; painel(); };
   $("#rasc").onchange = e => { S.rascunhos = e.target.checked; painel(); };
   $("#gerar").onclick = () => gerar(obra, dados);
+  $("#cronImp").onclick = () => { $("#cronArq").value = ""; $("#cronArq").click(); };
+  $("#cronArq").onchange = e => { const f = e.target.files && e.target.files[0]; if (f) importarCronograma(obra, f); };
+  $("#cronModelo").onclick = () => baixarModelo(obra);
+}
+
+/* ---------- cronograma: importar etapas de planilha ---------- */
+const fmtPeso = n => String(Math.round((+n || 0) * 100) / 100).replace(".", ",") + "%";
+const somaPesos = et => Math.round(et.reduce((s, e) => s + (+e.peso || 0), 0) * 100) / 100;
+function cronogramaHtml(obra) {
+  const et = obra.etapas || [];
+  const datas = et.flatMap(e => [e.inicio, e.fim]).filter(Boolean).sort();
+  const resumo = et.length
+    ? et.length + (et.length === 1 ? " etapa" : " etapas") + " · pesos somam " + fmtPeso(somaPesos(et)) + (datas.length ? " · de " + fmtData(datas[0]) + " a " + fmtData(datas.at(-1)) : "")
+    : "Nenhuma etapa cadastrada";
+  return '<section class="box"><div class="box-h">Cronograma da obra<span class="r">' + esc(resumo) + '</span></div><div class="box-b">' +
+    '<div class="row" style="align-items:center"><p style="margin:0;flex:1;min-width:260px;color:var(--muted);font-size:14px">Importe as etapas (nome, peso, início e fim previstos) de uma planilha Excel ou CSV. Etapas com o mesmo nome mantêm o % já lançado nos diários.</p>' +
+    '<button class="btn" id="cronModelo">' + (et.length ? "Baixar cronograma atual (Excel)" : "Baixar modelo (Excel)") + '</button>' +
+    '<button class="btn pri" id="cronImp">Importar planilha</button>' +
+    '<input type="file" id="cronArq" accept=".xlsx,.xls,.xlsm,.csv" hidden></div></div></section>';
+}
+async function baixarModelo(obra) {
+  const bytes = new Uint8Array(gerarModelo(obra.etapas || []));
+  const nome = "Cronograma_" + (obra.nome || "obra").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "_") + ".xlsx";
+  if (window.desktop && window.desktop.salvarArquivo) {
+    const r = await window.desktop.salvarArquivo(nome, bytes, "xlsx");
+    if (r.ok) toast("Planilha salva em " + r.caminho);
+  } else {
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a"); a.href = url; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+  }
+}
+async function importarCronograma(obra, arquivo) {
+  let r;
+  try { r = lerPlanilha(new Uint8Array(await arquivo.arrayBuffer()), arquivo.name); }
+  catch (e) { toast("Não consegui ler a planilha: " + (e.message || e)); return; }
+  const m = mesclarEtapas(obra.etapas || [], r.etapas, () => "e_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+  const soma = somaPesos(r.etapas);
+  const nDiarios = S.diarios.filter(d => d.obraId === obra.id && d.andamento && m.removidas.some(x => x.id in d.andamento)).length;
+  const rot = { nova: ["Nova", "ok"], alterada: ["Alterada", "alt"], igual: ["Sem mudança", "igual"] };
+  let h = '<div class="modal" role="dialog" aria-modal="true" aria-label="Prévia da importação"><div class="modal-h">Prévia da importação<span class="r">' + esc(arquivo.name) + (r.aba ? " · aba " + esc(r.aba) : "") + '</span></div><div class="modal-b">';
+  if (r.erros.length) {
+    h += '<div class="aviso ruim"><b>Corrija a planilha antes de importar:</b><ul>' + r.erros.map(e => '<li>' + (e.linha ? "Linha " + e.linha + ": " : "") + esc(e.msg) + '</li>').join("") + '</ul></div>';
+  }
+  if (r.etapas.length) {
+    h += '<table class="t"><thead><tr><th>Etapa</th><th style="text-align:right">Peso</th><th>Início</th><th>Fim</th><th>Situação</th></tr></thead><tbody>' +
+      m.etapas.map((e, i) => '<tr><td>' + esc(e.nome) + '</td><td class="n">' + fmtPeso(e.peso) + '</td><td class="n" style="text-align:left">' + fmtData(e.inicio) + '</td><td class="n" style="text-align:left">' + fmtData(e.fim) + '</td><td><span class="chip ' + rot[m.status[i]][1] + '">' + rot[m.status[i]][0] + '</span></td></tr>').join("") +
+      m.removidas.map(e => '<tr class="sai"><td>' + esc(e.nome) + '</td><td class="n">' + fmtPeso(e.peso) + '</td><td class="n" style="text-align:left">' + fmtData(e.inicio) + '</td><td class="n" style="text-align:left">' + fmtData(e.fim) + '</td><td><span class="chip sai">Sai da obra</span></td></tr>').join("") +
+      '</tbody></table>';
+    h += '<div class="row" style="gap:18px;font-size:14px"><span><b>' + m.status.filter(x => x === "nova").length + '</b> nova(s)</span><span><b>' + m.status.filter(x => x === "alterada").length + '</b> alterada(s)</span><span><b>' + m.removidas.length + '</b> sai(em)</span>' +
+      '<span>Soma dos pesos: <b' + (Math.abs(soma - 100) < 0.05 ? '' : ' style="color:var(--bad)"') + '>' + fmtPeso(soma) + '</b>' + (Math.abs(soma - 100) < 0.05 ? '' : ' (o app ajusta proporcionalmente para 100%)') + '</span></div>';
+    if (m.removidas.length) h += '<div class="aviso">' + (nDiarios ? "O % lançado em " + nDiarios + " diário(s) para as etapas que saem deixa de contar no andamento." : "As etapas que saem não têm % lançado em diários.") + '</div>';
+  }
+  h += '</div><div class="modal-f"><button class="btn" id="impNao">Cancelar</button><button class="btn pri" id="impSim"' + (r.erros.length || !r.etapas.length ? " disabled" : "") + '>Importar ' + r.etapas.length + ' etapa(s)</button></div></div>';
+  const sc = document.createElement("div"); sc.className = "scrim"; sc.innerHTML = h; document.body.appendChild(sc);
+  const fechar = () => sc.remove();
+  $("#impNao").onclick = fechar; sc.onclick = e => { if (e.target === sc) fechar(); };
+  document.addEventListener("keydown", function esc_(e) { if (e.key === "Escape") { fechar(); document.removeEventListener("keydown", esc_); } });
+  $("#impSim").onclick = async () => {
+    const b = $("#impSim"); b.disabled = true; b.textContent = "Gravando…";
+    try {
+      await setDoc(doc(DB, "obras", obra.id), { etapas: m.etapas, cronogramaImportadoEm: Date.now() }, { merge: true });
+      obra.etapas = m.etapas; fechar(); toast("Cronograma importado: " + m.etapas.length + " etapa(s)"); painel();
+    } catch (e) { b.disabled = false; b.textContent = "Importar " + r.etapas.length + " etapa(s)"; toast("Não foi possível gravar: " + errMsg(e)); }
+  };
+  $("#impSim").focus();
 }
 function kpi(l, v, s, cls) { return '<div class="kpi"><div class="l">' + esc(l) + '</div><div class="v' + (cls || "") + '">' + esc(v) + '</div><div class="s">' + esc(s) + '</div></div>'; }
 
